@@ -2,11 +2,10 @@ var http = require('http')
 var createHandler = require('github-webhook-handler')
 var handler = createHandler({ path: '/webhook', secret: (process.env.SECRET)})
 
-// these should go into the other app to create the team when org created
-// var userArray = ["user1"]
-// var team = "robots"
-// var description = "Team of Robots"
-// var team_privacy = "closed" // closed (visibile) / secret (hidden) are options here
+var userArray = ['user1']
+
+var team_description = "Team of Robots"
+var team_privacy = "closed" // closed (visibile) / secret (hidden) are options here
 
 var team_name = process.env.GHES_TEAM_NAME
 var team_access = "pull" // pull,push,admin options here
@@ -32,6 +31,15 @@ handler.on('repository', function (event) {
     repo = event.payload.repository.full_name
     org = event.payload.repository.owner.login
     getTeamID(org)
+  }
+})
+
+handler.on('team', function (event) {
+
+  if(event.payload.action == "deleted") {
+    name = event.payload.team.name
+    org = event.payload.organization.login
+    reCreateTeam(org)
   }
 })
 
@@ -112,4 +120,46 @@ req.on('error', (error) => {
  req.write(data)
 req.end()
 
+}
+
+function reCreateTeam(org) {
+  const https = require('https')
+  const data = JSON.stringify({
+    name: team_name,
+    description: team_description,
+    privacy: team_privacy,
+    maintainers: userArray
+  })
+
+  const options = {
+    hostname: (process.env.GHE_HOST),
+    port: 443,
+    path: '/api/v3/orgs/' + org + "/teams",
+    method: 'POST',
+    headers: {
+      'Authorization': 'token ' + impersonationToken,
+      'Content-Type': 'application/json',
+      'Content-Length': data.length
+    }
+  }
+  let body = [];
+  const req = https.request(options, (res) => {
+    if (res.statusCode != 201) {
+        console.log("Status code: %s", res.statusCode)
+        console.log("Adding %s to %s failed", team_name, org)
+        res.on('data', function (chunk) {
+          console.log('BODY: ' + chunk)
+          });
+    } else {
+          console.log("Added %s to %s", team_name, org)
+    }
+
+  })
+
+  req.on('error', (error) => {
+    console.error(error)
+  })
+
+   req.write(data)
+  req.end()
 }
