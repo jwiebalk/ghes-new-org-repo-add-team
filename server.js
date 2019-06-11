@@ -29,6 +29,7 @@ handler.on('repository', function (event) {
 
   if(event.payload.action == "created") {
     repo = event.payload.repository.full_name
+    console.log(repo)
     org = event.payload.repository.owner.login
     getTeamID(org)
   }
@@ -137,7 +138,7 @@ function reCreateTeam(org) {
     path: '/api/v3/orgs/' + org + "/teams",
     method: 'POST',
     headers: {
-      'Authorization': 'token ' + impersonationToken,
+      'Authorization': 'token ' + (process.env.GHE_TOKEN),
       'Content-Type': 'application/json',
       'Content-Length': data.length
     }
