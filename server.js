@@ -45,7 +45,13 @@ handler.on('team', function (event) {
     reCreateTeam(org)
     getTeamID(org)
     console.log("teamID " + team_id)
-  }
+    //Get list of all repos and re-add team to
+  } else if (event.payload.action == "removed_from_repository") {
+      org = event.payload.organization.login
+      getTeamID(org)
+      repo = event.payload.repository.full_name
+      setTimeout(checkTeamIDVariable, 1000);
+    }
 })
 
 function getTeamID(org)
