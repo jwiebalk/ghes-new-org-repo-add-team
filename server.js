@@ -32,6 +32,8 @@ handler.on('repository', function (event) {
     console.log(repo)
     org = event.payload.repository.owner.login
     getTeamID(org)
+    setTimeout(checkTeamIDVariable, 1000);
+
   }
 })
 
@@ -41,6 +43,8 @@ handler.on('team', function (event) {
     name = event.payload.team.name
     org = event.payload.organization.login
     reCreateTeam(org)
+    getTeamID(org)
+    console.log("teamID " + team_id)
   }
 })
 
@@ -68,7 +72,6 @@ const req = https.request(options, (res) => {
         body.forEach(item => {
           if (item.name == team_name) {
             team_id = item.id
-            addTeamToRepo(repo, team_id)
           }
 
        })
@@ -83,6 +86,15 @@ req.on('error', (error) => {
 req.end()
 
 }
+
+function checkTeamIDVariable() {
+
+   if (typeof team_id !== "undefined") {
+       addTeamToRepo(repo, team_id)
+   }
+}
+
+
 
 function addTeamToRepo(repo, team_id)
 {
@@ -153,6 +165,7 @@ function reCreateTeam(org) {
           });
     } else {
           console.log("Added %s to %s", team_name, org)
+          reAddToRepos(team_name)
     }
 
   })
