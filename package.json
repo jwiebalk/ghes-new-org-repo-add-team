@@ -15,5 +15,5 @@
     "dotenv": "*",
     "http": "*",
     "log-timestamp": "*"
-    }
+  }
 }
