@@ -1,17 +1,16 @@
 const http = require('http')
 const createHandler = require('github-webhook-handler')
+require('dotenv').config()
 const handler = createHandler({ path: '/webhook', secret: (process.env.WEBHOOK_SECRET) })
 
-require('dotenv').config()
 require('log-timestamp')
 const program = '-- ghes-new-repo-add-team --'
 
 const teamName = process.env.GHES_TEAM_NAME
-const teamAccess = process.env.GHES_TEAM_PERMISSION // pull,push,admin options here
+let repo = ''
 
 const { Octokit } = require('@octokit/rest')
 const { enterpriseServer220 } = require('@octokit/plugin-enterprise-server')
-
 const { retry } = require('@octokit/plugin-retry')
 const { throttling } = require('@octokit/plugin-throttling')
 
@@ -49,16 +48,48 @@ handler.on('error', function (err) {
 
 handler.on('repository', function (event) {
   if (event.payload.action === 'created') {
-    const repo = event.payload.repository.full_name
-    console.log(repo)
+    repo = event.payload.repository.name
     const org = event.payload.repository.owner.login
-    console.log(org)
-
-    // octokitAdmin.teams.addOrUpdateRepoPermissionsInOrg({
-    //   org,
-    //   team_slug: teamName,
-    //   owner,
-    //   repo
-    // })
+    getTeamId(org)
   }
 })
+
+async function getTeamId (org) {
+  try {
+    await octokitAdmin.teams.getByName({
+      team_slug: teamName,
+      org: org
+    }).then(({ data, status }) => {
+      if (status === 200) {
+        addTeamToRepo(org, data.id)
+      } else {
+        console.log(`${program} Failed to find ${teamName}`)
+      }
+    })
+  } catch (error) {
+    if (error.status === 404) {
+      console.log(error)
+    }
+  }
+}
+
+async function addTeamToRepo (org, teamId) {
+  try {
+    await octokitAdmin.teams.addOrUpdateRepoPermissions({
+      team_id: teamId,
+      owner: org,
+      repo: repo
+    }).then(({ data, status }) => {
+      if (status === 204) {
+        console.log(`${program} Successfully added ${teamName} to ${repo}`)
+      } else {
+        console.log(`${program} Failed to add ${teamName} to ${repo}`)
+      }
+    })
+  } catch (error) {
+    console.log(error)
+    if (error.status === 404) {
+      console.log(error)
+    }
+  }
+}
