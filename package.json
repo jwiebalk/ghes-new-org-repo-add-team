@@ -1,14 +1,19 @@
 {
-  "name": "ghes-new-org-repo-add-team",
+  "name": "github-new-repo-add-team",
   "version": "1.0.0",
-  "description": "Node.js on Docker",
+  "description": "Add a specified team to all newly created repos",
   "author": "John Wiebalk <jwiebalk@github.com>",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "github-webhook-handler": "*",
-    "http": "*"
-  }
+    "@octokit/plugin-enterprise-server": "^8.0.0",
+    "@octokit/plugin-retry": "*",
+    "@octokit/plugin-throttling": "^3.3.1",
+    "@octokit/rest": "^18.0.6",
+    "dotenv": "*",
+    "http": "*",
+    "log-timestamp": "*"
+    }
 }

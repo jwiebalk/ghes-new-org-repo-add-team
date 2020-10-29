@@ -1,19 +1,39 @@
-var http = require('http')
-var createHandler = require('github-webhook-handler')
-var handler = createHandler({ path: '/webhook', secret: (process.env.SECRET)})
+const http = require('http')
+const createHandler = require('github-webhook-handler')
+const handler = createHandler({ path: '/webhook', secret: (process.env.WEBHOOK_SECRET) })
 
-var userArray = ['user1']
+require('dotenv').config()
+require('log-timestamp')
+const program = '-- ghes-new-repo-add-team --'
 
-var team_description = "Team of Robots"
-var team_privacy = "closed" // closed (visibile) / secret (hidden) are options here
+const teamName = process.env.GHES_TEAM_NAME
+const teamAccess = process.env.GHES_TEAM_PERMISSION // pull,push,admin options here
 
-var team_name = process.env.GHES_TEAM_NAME
-var team_access = "pull" // pull,push,admin options here
-var team_id = ""
+const { Octokit } = require('@octokit/rest')
+const { enterpriseServer220 } = require('@octokit/plugin-enterprise-server')
 
-var org_repos = []
+const { retry } = require('@octokit/plugin-retry')
+const { throttling } = require('@octokit/plugin-throttling')
 
-// var creator = ""
+const OctokitEnterprise220 = Octokit.plugin(enterpriseServer220, retry, throttling)
+const octokitAdmin = new OctokitEnterprise220({
+  auth: process.env.GHES_TOKEN,
+  baseUrl: `https://${process.env.GHES_HOST}/api/v3`,
+  throttle: {
+    onRateLimit: (retryAfter, options) => {
+      octokitAdmin.log.warn(
+        `[${new Date().toISOString()}] ${program} Request quota exhausted for request, will retry in ${retryAfter}`
+      )
+      return true
+    },
+    onAbuseLimit: (retryAfter, options) => {
+      octokitAdmin.log.warn(
+        `[${new Date().toISOString()}] ${program} Abuse detected for request, will retry in ${retryAfter}`
+      )
+      return true
+    }
+  }
+})
 
 http.createServer(function (req, res) {
   handler(req, res, function (err) {
@@ -28,210 +48,17 @@ handler.on('error', function (err) {
 })
 
 handler.on('repository', function (event) {
-
-  if(event.payload.action == "created") {
-    repo = event.payload.repository.full_name
+  if (event.payload.action === 'created') {
+    const repo = event.payload.repository.full_name
     console.log(repo)
-    org = event.payload.repository.owner.login
-    getTeamID(org)
-    setTimeout(checkTeamIDVariable, 1000);
+    const org = event.payload.repository.owner.login
+    console.log(org)
 
+    // octokitAdmin.teams.addOrUpdateRepoPermissionsInOrg({
+    //   org,
+    //   team_slug: teamName,
+    //   owner,
+    //   repo
+    // })
   }
 })
-
-handler.on('team', function (event) {
-//TODO user events such as being removed from team or org
-  if(event.payload.action == "deleted") {
-    name = event.payload.team.name
-    org = event.payload.organization.login
-    getRepositories(org)
-    setTimeout(checkReposVariable, 5000)
-
-  } else if (event.payload.action == "removed_from_repository") {
-      org = event.payload.organization.login
-      getTeamID(org)
-      repo = event.payload.repository.full_name
-      setTimeout(checkTeamIDVariable, 1000);
-    }
-})
-
-function getTeamID(org)
-{
-
-const https = require('https')
-
-const options = {
-  hostname: (process.env.GHE_HOST),
-  port: 443,
-  path: '/api/v3/orgs/' + org + "/teams",
-  method: 'GET',
-  headers: {
-    'Authorization': 'token ' + (process.env.GHE_TOKEN),
-    'Content-Type': 'application/json'
-  }
-}
-let body = [];
-const req = https.request(options, (res) => {
-  res.on('data', (chunk) => {
-        body.push(chunk);
-      }).on('end', () => {
-        body = JSON.parse(Buffer.concat(body))
-        body.forEach(item => {
-          if (item.name == team_name) {
-            team_id = item.id
-          }
-
-       })
-    })
-
-})
-
-req.on('error', (error) => {
-  console.error(error)
-})
-
-req.end()
-
-}
-
-function checkTeamIDVariable() {
-
-   if (typeof team_id !== "undefined") {
-       addTeamToRepo(repo, team_id)
-   }
-}
-
-function checkReposVariable() {
-
-   if (typeof org_repos !== "undefined") {
-//      for(var repo of org_repos) {
-//        addTeamToRepo(repo, team_id)
-// }
-    reCreateTeam(org)
-
-   }
-}
-
-
-
-function addTeamToRepo(repo, team_id)
-{
-
-const https = require('https')
-const data = JSON.stringify({
-  permission: team_access
-})
-
-const options = {
-  hostname: (process.env.GHE_HOST),
-  port: 443,
-  path: '/api/v3/teams/'+ team_id + '/repos/' + repo,
-  method: 'PUT',
-  headers: {
-    'Authorization': 'token ' + (process.env.GHE_TOKEN),
-    'Content-Type': 'application/json',
-    'Content-Length': data.length
-  }
-}
-let body = [];
-const req = https.request(options, (res) => {
-  res.on('data', (chunk) => {
-        body.push(chunk);
-      }).on('end', () => {
-        body = Buffer.concat(body).toString();
-        console.log(res.statusCode)
-        console.log("added team to " + repo)
-    })
-
-})
-
-req.on('error', (error) => {
-  console.error(error)
-})
-
- req.write(data)
-req.end()
-
-}
-
-function reCreateTeam(org) {
-  const https = require('https')
-  const data = JSON.stringify({
-    name: team_name,
-    description: team_description,
-    privacy: team_privacy,
-    maintainers: userArray,
-    repo_names: org_repos
-  })
-
-  const options = {
-    hostname: (process.env.GHE_HOST),
-    port: 443,
-    path: '/api/v3/orgs/' + org + "/teams",
-    method: 'POST',
-    headers: {
-      'Authorization': 'token ' + (process.env.GHE_TOKEN),
-      'Content-Type': 'application/json',
-      'Content-Length': data.length
-    }
-  }
-  let body = [];
-  const req = https.request(options, (res) => {
-    if (res.statusCode != 201) {
-        console.log("Status code: %s", res.statusCode)
-        console.log("Adding %s to %s failed", team_name, org)
-        res.on('data', function (chunk) {
-          console.log('BODY: ' + chunk)
-          });
-    } else {
-          console.log("Added %s to %s", team_name, org)
-    }
-
-  })
-
-  req.on('error', (error) => {
-    console.error(error)
-  })
-
-   req.write(data)
-  req.end()
-}
-
-function getRepositories(org)
-{
-org_repos = []
-
-const https = require('https')
-
-const options = {
-  hostname: (process.env.GHE_HOST),
-  port: 443,
-  path: '/api/v3/orgs/' + org + "/repos",
-  method: 'GET',
-  headers: {
-    'Authorization': 'token ' + (process.env.GHE_TOKEN),
-    'Content-Type': 'application/json'
-  }
-}
-let body = [];
-const req = https.request(options, (res) => {
-  res.on('data', (chunk) => {
-        body.push(chunk);
-      }).on('end', () => {
-        body = JSON.parse(Buffer.concat(body))
-        body.forEach(item => {
-          org_repos.push(item.full_name)
-          console.log(item.full_name)
-
-       })
-    })
-
-})
-
-req.on('error', (error) => {
-  console.error(error)
-})
-
-req.end()
-
-}
